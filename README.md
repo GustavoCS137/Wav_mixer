@@ -1,1 +1,25 @@
-Projeto em C para criação de um mixer de audio em WAV para a aula de Algoritimos e estruturas de dados 2 na UTFPR-Snata Helena
+
+## Sintaxe Markdown Básica
+
+```markdown
+# Título Principal
+## Subtítulo
+### Sub-subtítulo
+
+**Texto em negrito**
+*Texto em itálico*
+
+- Item de lista
+- Outro item
+
+1. Item numerado
+2. Outro item
+
+[Link](https://exemplo.com)
+
+![Imagem](caminho/da/imagem.jpg)
+
+`código inline`
+
+```python
+bloco de código
