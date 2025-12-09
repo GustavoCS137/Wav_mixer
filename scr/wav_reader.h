@@ -5,7 +5,17 @@
 extern "C" {
 #endif
 
-int mix_wav_files(const char* output_file, const char* input_files[], float volumes[], int file_count);
+typedef struct {
+    uint32_t sample_rate;
+    uint16_t num_channels;
+    uint16_t bits_per_sample;
+    uint32_t data_size;
+    uint32_t duration_samples;
+} WAV_Info;
+
+int mix_wav_files(const char* output_file, const char* input_files[], float volumes[], float pans[], int file_count);
+int get_wav_info(const char* filename, WAV_Info* info);
+int read_wav_samples(const char* filename, int16_t** samples, size_t* sample_count, int max_samples);
 
 #ifdef __cplusplus
 }

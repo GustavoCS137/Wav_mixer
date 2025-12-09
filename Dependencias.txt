@@ -1,8 +1,0 @@
-# Ubuntu/Debian
-sudo apt-get install libgtk-3-dev
-
-# Fedora
-sudo dnf install gtk3-devel
-
-# Arch Linux
-sudo pacman -S gtk3
