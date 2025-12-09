@@ -371,3 +371,90 @@ int read_wav_samples(const char* filename, int16_t** samples, size_t* sample_cou
     fclose(file);
     return 0;
 }
+
+int get_user_input(char* buffer, int size) {
+    if (!buffer || size <= 0) return -1;
+    
+    printf("Digite o nome do arquivo: ");
+    if (fgets(buffer, size, stdin) == NULL) {
+        return -1;
+    }
+    
+    size_t len = strlen(buffer);
+    if (len > 0 && buffer[len - 1] == '\n') {
+        buffer[len - 1] = '\0';
+    }
+    
+    return 0;
+}
+
+int process_audio_matrix(int16_t matrix[][2], int rows, int channels) {
+    if (!matrix || rows <= 0 || channels != 2) return -1;
+    
+    int16_t *left_channel = NULL;
+    int16_t *right_channel = NULL;
+    int *peak_indices = NULL;
+    
+    left_channel = (int16_t*)malloc(rows * sizeof(int16_t));
+    right_channel = (int16_t*)malloc(rows * sizeof(int16_t));
+    peak_indices = (int*)malloc(rows * sizeof(int));
+    
+    if (!left_channel || !right_channel || !peak_indices) {
+        if (left_channel) free(left_channel);
+        if (right_channel) free(right_channel);
+        if (peak_indices) free(peak_indices);
+        return -1;
+    }
+    
+    int16_t max_left = 0, max_right = 0;
+    for (int i = 0; i < rows; i++) {
+        left_channel[i] = matrix[i][0];
+        right_channel[i] = matrix[i][1];
+        
+        if (abs(left_channel[i]) > abs(max_left)) {
+            max_left = left_channel[i];
+        }
+        if (abs(right_channel[i]) > abs(max_right)) {
+            max_right = right_channel[i];
+        }
+        
+        peak_indices[i] = i;
+    }
+    
+    printf("📊 Processamento de matriz: %d linhas processadas\n", rows);
+    printf("   Pico canal esquerdo: %d\n", max_left);
+    printf("   Pico canal direito: %d\n", max_right);
+    
+    free(left_channel);
+    free(right_channel);
+    free(peak_indices);
+    
+    return 0;
+}
+
+MixSettings create_mix_settings_by_value(MixSettings settings) {
+    MixSettings new_settings = settings;
+    new_settings.volume *= 1.1f;
+    if (new_settings.volume > 2.0f) new_settings.volume = 2.0f;
+    return new_settings;
+}
+
+void modify_mix_settings_by_reference(MixSettings* settings) {
+    if (!settings) return;
+    settings->pan *= 0.9f;
+    if (settings->pan > 1.0f) settings->pan = 1.0f;
+    if (settings->pan < -1.0f) settings->pan = -1.0f;
+}
+
+int process_audio_file_config_array(AudioFileConfig configs[], int count) {
+    if (!configs || count <= 0) return -1;
+    
+    int total_samples = 0;
+    for (int i = 0; i < count; i++) {
+        total_samples += configs[i].info.duration_samples;
+        printf("Arquivo %d: %s - %u amostras\n", 
+               i + 1, configs[i].filename, configs[i].info.duration_samples);
+    }
+    
+    return total_samples;
+}

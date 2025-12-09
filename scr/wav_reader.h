@@ -13,6 +13,24 @@ typedef struct {
     uint32_t duration_samples;
 } WAV_Info;
 
+typedef struct {
+    float volume;
+    float pan;
+    int enabled;
+} MixSettings;
+
+typedef struct {
+    WAV_Info info;
+    MixSettings settings;
+    char filename[256];
+} AudioFileConfig;
+
+int process_audio_matrix(int16_t matrix[][2], int rows, int channels);
+int get_user_input(char* buffer, int size);
+MixSettings create_mix_settings_by_value(MixSettings settings);
+void modify_mix_settings_by_reference(MixSettings* settings);
+int process_audio_file_config_array(AudioFileConfig configs[], int count);
+
 int mix_wav_files(const char* output_file, const char* input_files[], float volumes[], float pans[], int file_count);
 int get_wav_info(const char* filename, WAV_Info* info);
 int read_wav_samples(const char* filename, int16_t** samples, size_t* sample_count, int max_samples);

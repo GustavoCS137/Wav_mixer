@@ -652,11 +652,15 @@ static gboolean draw_timeline(GtkWidget *widget, cairo_t *cr, gpointer user_data
         gtk_widget_set_size_request(editor->timeline_drawing_area, total_clips_width, 500);
     }
     
-    cairo_set_source_rgb(cr, 0.1, 0.1, 0.1);
+    cairo_pattern_t *bg_pattern = cairo_pattern_create_linear(0, 0, 0, height);
+    cairo_pattern_add_color_stop_rgb(bg_pattern, 0.0, 0.08, 0.08, 0.12);
+    cairo_pattern_add_color_stop_rgb(bg_pattern, 1.0, 0.05, 0.05, 0.08);
+    cairo_set_source(cr, bg_pattern);
     cairo_rectangle(cr, 0, 0, width, height);
     cairo_fill(cr);
+    cairo_pattern_destroy(bg_pattern);
     
-    cairo_set_source_rgb(cr, 0.3, 0.3, 0.3);
+    cairo_set_source_rgba(cr, 0.2, 0.3, 0.5, 0.3);
     cairo_set_line_width(cr, 1);
     
     for (int i = 0; i < width; i += 50) {
@@ -670,6 +674,8 @@ static gboolean draw_timeline(GtkWidget *widget, cairo_t *cr, gpointer user_data
     int num_tracks = height / track_height;
     if (num_tracks < 1) num_tracks = 1;
     
+    cairo_set_source_rgba(cr, 0.3, 0.5, 0.7, 0.4);
+    cairo_set_line_width(cr, 1.5);
     for (int i = 1; i < num_tracks; i++) {
         cairo_move_to(cr, 0, i * track_height);
         cairo_line_to(cr, width, i * track_height);
@@ -712,16 +718,29 @@ static gboolean draw_timeline(GtkWidget *widget, cairo_t *cr, gpointer user_data
         
         int clip_height = track_height - 10;
         
-        cairo_set_source_rgb(cr, 0.15, 0.15, 0.2);
+        float hue = (track_num % 6) / 6.0f;
+        float r, g, b;
+        if (hue < 0.17f) { r = 0.2f; g = 0.6f; b = 0.9f; }
+        else if (hue < 0.33f) { r = 0.4f; g = 0.8f; b = 0.3f; }
+        else if (hue < 0.5f) { r = 0.9f; g = 0.5f; b = 0.2f; }
+        else if (hue < 0.67f) { r = 0.9f; g = 0.3f; b = 0.6f; }
+        else if (hue < 0.83f) { r = 0.7f; g = 0.4f; b = 0.9f; }
+        else { r = 0.3f; g = 0.8f; b = 0.9f; }
+        
+        cairo_pattern_t *clip_pattern = cairo_pattern_create_linear(clip_x, track_y, clip_x, track_y + clip_height);
+        cairo_pattern_add_color_stop_rgb(clip_pattern, 0.0, r * 0.25, g * 0.25, b * 0.25);
+        cairo_pattern_add_color_stop_rgb(clip_pattern, 1.0, r * 0.15, g * 0.15, b * 0.15);
+        cairo_set_source(cr, clip_pattern);
         cairo_rectangle(cr, clip_x, track_y, clip_width, clip_height);
         cairo_fill(cr);
+        cairo_pattern_destroy(clip_pattern);
         
         if (editor->selected_clip == clip) {
-            cairo_set_source_rgb(cr, 1.0, 0.8, 0.2);
+            cairo_set_source_rgb(cr, 1.0, 0.9, 0.3);
             cairo_set_line_width(cr, 4);
         } else {
-            cairo_set_source_rgb(cr, 0.4, 0.7, 1.0);
-            cairo_set_line_width(cr, 2);
+            cairo_set_source_rgb(cr, r, g, b);
+            cairo_set_line_width(cr, 2.5);
         }
         cairo_rectangle(cr, clip_x, track_y, clip_width, clip_height);
         cairo_stroke(cr);
@@ -730,20 +749,24 @@ static gboolean draw_timeline(GtkWidget *widget, cairo_t *cr, gpointer user_data
         int waveform_area_y = track_y + text_area_height;
         int waveform_area_height = clip_height - text_area_height - 5;
         
-        cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
-        cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
+        cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.5);
+        cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
         cairo_set_font_size(cr, 11);
         const char *filename = strrchr(clip->filename, '/');
         if (!filename) filename = strrchr(clip->filename, '\\');
         if (!filename) filename = clip->filename;
         else filename++;
+        cairo_move_to(cr, clip_x + 6, track_y + 16);
+        cairo_show_text(cr, filename);
+        
+        cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
         cairo_move_to(cr, clip_x + 5, track_y + 15);
         cairo_show_text(cr, filename);
         
         char info[50];
         snprintf(info, sizeof(info), "V:%.1f P:%.1f", clip->volume, clip->pan);
         cairo_set_font_size(cr, 9);
-        cairo_set_source_rgb(cr, 0.8, 0.8, 0.8);
+        cairo_set_source_rgb(cr, r * 0.8, g * 0.8, b * 0.8);
         cairo_move_to(cr, clip_x + 5, track_y + 25);
         cairo_show_text(cr, info);
         
@@ -760,14 +783,14 @@ static gboolean draw_timeline(GtkWidget *widget, cairo_t *cr, gpointer user_data
                 
                 int center_y = waveform_area_y + waveform_area_height / 2;
                 
-                cairo_set_source_rgb(cr, 0.3, 0.3, 0.4);
+                cairo_set_source_rgba(cr, 0.4, 0.4, 0.5, 0.3);
                 cairo_set_line_width(cr, 0.5);
                 cairo_move_to(cr, clip_x, center_y);
                 cairo_line_to(cr, clip_x + clip_width, center_y);
                 cairo_stroke(cr);
                 
-                cairo_set_source_rgb(cr, 0.2, 0.9, 0.4);
-                cairo_set_line_width(cr, 1.5);
+                cairo_set_source_rgb(cr, r * 0.7, g * 0.7, b * 0.7);
+                cairo_set_line_width(cr, 2.0);
                 
                 int16_t max_abs = 0;
                 for (size_t i = 0; i < waveform_count; i++) {
@@ -809,10 +832,10 @@ static gboolean draw_timeline(GtkWidget *widget, cairo_t *cr, gpointer user_data
                 free(waveform_samples);
             }
         } else {
-            cairo_set_source_rgb(cr, 0.5, 0.5, 0.5);
+            cairo_set_source_rgba(cr, 0.6, 0.6, 0.6, 0.7);
             cairo_set_font_size(cr, 10);
             cairo_move_to(cr, clip_x + 5, waveform_area_y + waveform_area_height / 2);
-            cairo_show_text(cr, "Carregando waveform...");
+            cairo_show_text(cr, "⏳ Carregando waveform...");
         }
         
         track_num++;
@@ -820,10 +843,22 @@ static gboolean draw_timeline(GtkWidget *widget, cairo_t *cr, gpointer user_data
     }
     
     if (editor->playing || editor->current_position > 0) {
-        cairo_set_source_rgb(cr, 1.0, 0.6, 0.0);
-        cairo_set_line_width(cr, 2);
         int cursor_x = (editor->current_position * width) / max_duration;
         if (cursor_x >= 0 && cursor_x < width) {
+            cairo_set_source_rgba(cr, 1.0, 0.8, 0.0, 0.3);
+            cairo_set_line_width(cr, 4);
+            cairo_move_to(cr, cursor_x, 0);
+            cairo_line_to(cr, cursor_x, height);
+            cairo_stroke(cr);
+            
+            cairo_set_source_rgb(cr, 1.0, 0.7, 0.2);
+            cairo_set_line_width(cr, 3);
+            cairo_move_to(cr, cursor_x, 0);
+            cairo_line_to(cr, cursor_x, height);
+            cairo_stroke(cr);
+            
+            cairo_set_source_rgb(cr, 1.0, 1.0, 0.5);
+            cairo_set_line_width(cr, 1);
             cairo_move_to(cr, cursor_x, 0);
             cairo_line_to(cr, cursor_x, height);
             cairo_stroke(cr);
@@ -834,11 +869,11 @@ static gboolean draw_timeline(GtkWidget *widget, cairo_t *cr, gpointer user_data
 }
 
 GtkWidget* create_toolbar(AudioEditor *editor) {
-    GtkWidget *toolbar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
-    gtk_widget_set_margin_start(toolbar, 5);
-    gtk_widget_set_margin_end(toolbar, 5);
-    gtk_widget_set_margin_top(toolbar, 5);
-    gtk_widget_set_margin_bottom(toolbar, 5);
+    GtkWidget *toolbar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    gtk_widget_set_margin_start(toolbar, 10);
+    gtk_widget_set_margin_end(toolbar, 10);
+    gtk_widget_set_margin_top(toolbar, 10);
+    gtk_widget_set_margin_bottom(toolbar, 10);
     
     GtkWidget *open_btn = gtk_button_new_with_label("📁 Abrir Áudio");
     g_signal_connect(open_btn, "clicked", G_CALLBACK(on_open_file), editor);
@@ -878,7 +913,7 @@ static void update_info_label(AudioEditor *editor) {
         GtkWidget *info_label = GTK_WIDGET(iter->data);
         int clip_count = g_list_length(editor->audio_clips);
         char info_text[100];
-        snprintf(info_text, sizeof(info_text), "%d Hz • 16-bit • %d arquivo(s)", 
+        snprintf(info_text, sizeof(info_text), "🎵 %d Hz • 16-bit • %d arquivo(s)", 
                  editor->sample_rate, clip_count);
         gtk_label_set_text(GTK_LABEL(info_label), info_text);
     }
@@ -886,21 +921,23 @@ static void update_info_label(AudioEditor *editor) {
 }
 
 GtkWidget* create_transport_controls(AudioEditor *editor) {
-    GtkWidget *transport = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
-    gtk_widget_set_margin_start(transport, 10);
-    gtk_widget_set_margin_end(transport, 10);
-    gtk_widget_set_margin_top(transport, 5);
-    gtk_widget_set_margin_bottom(transport, 5);
+    GtkWidget *transport = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 15);
+    gtk_widget_set_margin_start(transport, 15);
+    gtk_widget_set_margin_end(transport, 15);
+    gtk_widget_set_margin_top(transport, 10);
+    gtk_widget_set_margin_bottom(transport, 10);
     
-    GtkWidget *position_label = gtk_label_new("00:00");
+    GtkWidget *position_label = gtk_label_new("⏱️ 00:00");
     gtk_box_pack_start(GTK_BOX(transport), position_label, FALSE, FALSE, 0);
     
     GtkWidget *progress_scale = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0, 100, 1);
     gtk_scale_set_draw_value(GTK_SCALE(progress_scale), FALSE);
     gtk_widget_set_hexpand(progress_scale, TRUE);
+    gtk_widget_set_margin_start(progress_scale, 10);
+    gtk_widget_set_margin_end(progress_scale, 10);
     gtk_box_pack_start(GTK_BOX(transport), progress_scale, TRUE, TRUE, 0);
     
-    GtkWidget *info_label = gtk_label_new("44100 Hz • 16-bit • 0 arquivo(s)");
+    GtkWidget *info_label = gtk_label_new("🎵 44100 Hz • 16-bit • 0 arquivo(s)");
     gtk_box_pack_start(GTK_BOX(transport), info_label, FALSE, FALSE, 0);
     
     return transport;
@@ -986,15 +1023,15 @@ static void update_mixer_controls(AudioEditor *editor) {
 
 GtkWidget* create_mixer_panel(AudioEditor *editor) {
     GtkWidget *mixer_frame = gtk_frame_new("🎛️ Mixer");
-    GtkWidget *mixer_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
-    gtk_container_set_border_width(GTK_CONTAINER(mixer_frame), 5);
+    GtkWidget *mixer_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 15);
+    gtk_container_set_border_width(GTK_CONTAINER(mixer_frame), 10);
     gtk_container_add(GTK_CONTAINER(mixer_frame), mixer_box);
     
-    GtkWidget *info_label = gtk_label_new("Selecione um clip na timeline para editar");
-    gtk_box_pack_start(GTK_BOX(mixer_box), info_label, FALSE, FALSE, 5);
+    GtkWidget *info_label = gtk_label_new("🎯 Selecione um clip na timeline para editar");
+    gtk_box_pack_start(GTK_BOX(mixer_box), info_label, FALSE, FALSE, 10);
     
-    GtkWidget *volume_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
-    GtkWidget *volume_label = gtk_label_new("Volume");
+    GtkWidget *volume_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+    GtkWidget *volume_label = gtk_label_new("🔊 Volume");
     editor->volume_scale = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0, 2, 0.1);
     gtk_scale_set_draw_value(GTK_SCALE(editor->volume_scale), TRUE);
     gtk_range_set_value(GTK_RANGE(editor->volume_scale), 1.0);
@@ -1006,8 +1043,8 @@ GtkWidget* create_mixer_panel(AudioEditor *editor) {
     gtk_box_pack_start(GTK_BOX(volume_box), editor->volume_scale, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(mixer_box), volume_box, FALSE, FALSE, 0);
     
-    GtkWidget *pan_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
-    GtkWidget *pan_label = gtk_label_new("Pan (L/R)");
+    GtkWidget *pan_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+    GtkWidget *pan_label = gtk_label_new("🎚️ Pan (L/R)");
     editor->pan_scale = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, -1, 1, 0.1);
     gtk_scale_set_draw_value(GTK_SCALE(editor->pan_scale), TRUE);
     gtk_range_set_value(GTK_RANGE(editor->pan_scale), 0.0);
@@ -1024,6 +1061,111 @@ GtkWidget* create_mixer_panel(AudioEditor *editor) {
 
 void launch_audio_editor(int argc, char *argv[]) {
     gtk_init(&argc, &argv);
+    
+    GtkCssProvider *css_provider = gtk_css_provider_new();
+    const char *css = 
+        "window {"
+        "  background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);"
+        "}"
+        "button {"
+        "  background: linear-gradient(180deg, #4a90e2 0%, #357abd 100%);"
+        "  color: white;"
+        "  border: none;"
+        "  border-radius: 8px;"
+        "  padding: 8px 16px;"
+        "  font-weight: bold;"
+        "  box-shadow: 0 2px 4px rgba(0,0,0,0.3);"
+        "  transition: all 0.2s;"
+        "}"
+        "button:hover {"
+        "  background: linear-gradient(180deg, #5ba0f2 0%, #4590cd 100%);"
+        "  box-shadow: 0 4px 8px rgba(74, 144, 226, 0.4);"
+        "  transform: translateY(-1px);"
+        "}"
+        "button:active {"
+        "  background: linear-gradient(180deg, #357abd 0%, #2a6aa8 100%);"
+        "  transform: translateY(0px);"
+        "}"
+        "button[label*='Abrir'] {"
+        "  background: linear-gradient(180deg, #2ecc71 0%, #27ae60 100%);"
+        "}"
+        "button[label*='Abrir']:hover {"
+        "  background: linear-gradient(180deg, #3ecc81 0%, #2eae70 100%);"
+        "}"
+        "button[label*='Remover'] {"
+        "  background: linear-gradient(180deg, #e74c3c 0%, #c0392b 100%);"
+        "}"
+        "button[label*='Remover']:hover {"
+        "  background: linear-gradient(180deg, #f75c4c 0%, #d0493b 100%);"
+        "}"
+        "button[label*='Reproduzir'] {"
+        "  background: linear-gradient(180deg, #f39c12 0%, #e67e22 100%);"
+        "}"
+        "button[label*='Reproduzir']:hover {"
+        "  background: linear-gradient(180deg, #f4ac22 0%, #f68e32 100%);"
+        "}"
+        "button[label*='Parar'] {"
+        "  background: linear-gradient(180deg, #95a5a6 0%, #7f8c8d 100%);"
+        "}"
+        "button[label*='Parar']:hover {"
+        "  background: linear-gradient(180deg, #a5b5b6 0%, #8f9c9d 100%);"
+        "}"
+        "button[label*='Exportar'] {"
+        "  background: linear-gradient(180deg, #9b59b6 0%, #8e44ad 100%);"
+        "}"
+        "button[label*='Exportar']:hover {"
+        "  background: linear-gradient(180deg, #ab69c6 0%, #9e54bd 100%);"
+        "}"
+        "frame {"
+        "  background: rgba(30, 30, 45, 0.8);"
+        "  border: 2px solid #4a90e2;"
+        "  border-radius: 10px;"
+        "  padding: 10px;"
+        "}"
+        "label {"
+        "  color: #ecf0f1;"
+        "  font-weight: 500;"
+        "}"
+        "scale {"
+        "  color: #4a90e2;"
+        "}"
+        "scale trough {"
+        "  background: rgba(50, 50, 70, 0.8);"
+        "  border-radius: 5px;"
+        "  min-height: 8px;"
+        "}"
+        "scale highlight {"
+        "  background: linear-gradient(90deg, #4a90e2 0%, #9b59b6 100%);"
+        "  border-radius: 5px;"
+        "}"
+        "scale slider {"
+        "  background: linear-gradient(180deg, #ecf0f1 0%, #bdc3c7 100%);"
+        "  border: 2px solid #4a90e2;"
+        "  border-radius: 50%;"
+        "  min-width: 16px;"
+        "  min-height: 16px;"
+        "  box-shadow: 0 2px 4px rgba(0,0,0,0.3);"
+        "}"
+        "statusbar {"
+        "  background: linear-gradient(90deg, #2c3e50 0%, #34495e 100%);"
+        "  color: #ecf0f1;"
+        "  padding: 5px;"
+        "}"
+        "separator {"
+        "  background: rgba(74, 144, 226, 0.5);"
+        "  min-width: 2px;"
+        "}"
+        "box {"
+        "  background: transparent;"
+        "}";
+    
+    gtk_css_provider_load_from_data(css_provider, css, -1, NULL);
+    gtk_style_context_add_provider_for_screen(
+        gdk_screen_get_default(),
+        GTK_STYLE_PROVIDER(css_provider),
+        GTK_STYLE_PROVIDER_PRIORITY_APPLICATION
+    );
+    g_object_unref(css_provider);
     
     #ifdef USE_SDL2
     if (SDL_Init(SDL_INIT_AUDIO) < 0) {
@@ -1056,8 +1198,11 @@ void launch_audio_editor(int argc, char *argv[]) {
     
     editor->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gtk_window_set_title(GTK_WINDOW(editor->window), "🎵 Studio WAV - Editor de Áudio Profissional");
-    gtk_window_set_default_size(GTK_WINDOW(editor->window), 1000, 600);
+    gtk_window_set_default_size(GTK_WINDOW(editor->window), 1200, 700);
     gtk_window_set_position(GTK_WINDOW(editor->window), GTK_WIN_POS_CENTER);
+    
+    GtkStyleContext *context = gtk_widget_get_style_context(editor->window);
+    gtk_style_context_add_class(context, "window");
     
     editor->main_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_container_add(GTK_CONTAINER(editor->window), editor->main_box);
