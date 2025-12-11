@@ -3,6 +3,14 @@
 #include <string.h>
 #include <stdint.h>
 #include <math.h>
+#include <errno.h>
+#ifdef _WIN32
+#include <io.h>
+#define access _access
+#define F_OK 0
+#else
+#include <unistd.h>
+#endif
 #include "wav_reader.h"
 
 #pragma pack(push, 1)
@@ -35,12 +43,12 @@ int mix_wav_files(const char* output_file, const char* input_files[], float volu
         return -1;
     }
     
-    printf("🎵 Iniciando mixagem de %d arquivo(s)...\n", file_count);
 
     FILE** files = malloc(file_count * sizeof(FILE*));
     WAV_Header* headers = malloc(file_count * sizeof(WAV_Header));
     WAV_Fmt* fmts = malloc(file_count * sizeof(WAV_Fmt));
     WAV_Data* datas = malloc(file_count * sizeof(WAV_Data));
+    char** actual_paths = malloc(file_count * sizeof(char*));
     
     uint32_t max_data_size = 0;
     uint32_t sample_rate = 44100;
@@ -48,12 +56,65 @@ int mix_wav_files(const char* output_file, const char* input_files[], float volu
     uint16_t bits_per_sample = 16;
 
     for (int i = 0; i < file_count; i++) {
-        files[i] = fopen(input_files[i], "rb");
+        const char *filename = input_files[i];
+        char *actual_path = NULL;
+        
+        if (access(filename, F_OK) != 0) {
+            const char *basename = strrchr(filename, '/');
+            if (!basename) basename = strrchr(filename, '\\');
+            if (basename) basename++;
+            else basename = filename;
+            
+            const char *alternatives[] = {
+                "../audio/",
+                "audio/",
+                "./audio/",
+                NULL
+            };
+            
+            int found = 0;
+            for (int alt = 0; alternatives[alt] != NULL; alt++) {
+                size_t len = strlen(alternatives[alt]) + strlen(basename) + 1;
+                actual_path = malloc(len);
+                snprintf(actual_path, len, "%s%s", alternatives[alt], basename);
+                
+                if (access(actual_path, F_OK) == 0) {
+                    found = 1;
+                    break;
+                }
+                free(actual_path);
+                actual_path = NULL;
+            }
+            
+            if (!found) {
+                printf("Erro ao abrir: %s\n", input_files[i]);
+                for (int j = 0; j < i; j++) {
+                    fclose(files[j]);
+                    if (actual_paths[j] != input_files[j]) free(actual_paths[j]);
+                }
+                free(files); free(headers); free(fmts); free(datas); free(actual_paths);
+                return -1;
+            }
+        } else {
+            actual_path = (char *)filename;
+        }
+        
+        files[i] = fopen(actual_path, "rb");
         if (!files[i]) {
-            printf("Erro ao abrir: %s\n", input_files[i]);
-            for (int j = 0; j < i; j++) fclose(files[j]);
-            free(files); free(headers); free(fmts); free(datas);
+            printf("Erro ao abrir: %s\n", actual_path);
+            if (actual_path != filename) free(actual_path);
+            for (int j = 0; j < i; j++) {
+                fclose(files[j]);
+                if (actual_paths[j] != input_files[j]) free(actual_paths[j]);
+            }
+            free(files); free(headers); free(fmts); free(datas); free(actual_paths);
             return -1;
+        }
+        
+        if (actual_path != filename) {
+            actual_paths[i] = actual_path;
+        } else {
+            actual_paths[i] = (char *)filename;
         }
 
         fread(&headers[i], sizeof(WAV_Header), 1, files[i]);
@@ -80,8 +141,11 @@ int mix_wav_files(const char* output_file, const char* input_files[], float volu
             strncmp(headers[i].format, "WAVE", 4) != 0) {
             printf("Arquivo não é WAV válido: %s\n", input_files[i]);
             fclose(files[i]);
-            for (int j = 0; j < i; j++) fclose(files[j]);
-            free(files); free(headers); free(fmts); free(datas);
+            for (int j = 0; j < i; j++) {
+                fclose(files[j]);
+                if (actual_paths[j] != input_files[j]) free(actual_paths[j]);
+            }
+            free(files); free(headers); free(fmts); free(datas); free(actual_paths);
             return -1;
         }
 
@@ -95,18 +159,16 @@ int mix_wav_files(const char* output_file, const char* input_files[], float volu
             max_data_size = datas[i].subchunk2Size;
         }
         
-        printf("📁 Arquivo %d: %s (%u bytes, %d Hz, %d canais)\n", 
-               i + 1, input_files[i], datas[i].subchunk2Size, 
-               fmts[i].sampleRate, fmts[i].numChannels);
     }
-    
-    printf("📊 Tamanho máximo de dados: %u bytes\n", max_data_size);
 
     FILE* output = fopen(output_file, "wb");
     if (!output) {
         printf("Erro ao criar: %s\n", output_file);
-        for (int i = 0; i < file_count; i++) fclose(files[i]);
-        free(files); free(headers); free(fmts); free(datas);
+        for (int i = 0; i < file_count; i++) {
+            fclose(files[i]);
+            if (actual_paths[i] != input_files[i]) free(actual_paths[i]);
+        }
+        free(files); free(headers); free(fmts); free(datas); free(actual_paths);
         return -1;
     }
 
@@ -135,9 +197,9 @@ int mix_wav_files(const char* output_file, const char* input_files[], float volu
     int16_t* sample_buffer = malloc(max_data_size);
 
     for (int i = 0; i < file_count; i++) {
-        files[i] = fopen(input_files[i], "rb");
+        files[i] = fopen(actual_paths[i], "rb");
         if (!files[i]) {
-            printf("Erro ao reabrir: %s\n", input_files[i]);
+            printf("Erro ao reabrir: %s\n", actual_paths[i]);
             continue;
         }
         
@@ -219,20 +281,22 @@ int mix_wav_files(const char* output_file, const char* input_files[], float volu
 
     size_t written = fwrite(mix_buffer, 1, max_data_size, output);
     if (written != max_data_size) {
-        printf("⚠️ Aviso: Escritos %zu bytes de %u esperados\n", written, max_data_size);
-    } else {
-        printf("✅ Dados mixados escritos com sucesso (%zu bytes)\n", written);
     }
 
     fclose(output);
     free(mix_buffer);
     free(sample_buffer);
+    for (int i = 0; i < file_count; i++) {
+        if (actual_paths[i] != input_files[i]) {
+            free(actual_paths[i]);
+        }
+    }
+    free(actual_paths);
     free(files);
     free(headers);
     free(fmts);
     free(datas);
 
-    printf("🎉 Mixagem concluída com sucesso!\n");
     return 0;
 }
 
@@ -421,7 +485,6 @@ int process_audio_matrix(int16_t matrix[][2], int rows, int channels) {
         peak_indices[i] = i;
     }
     
-    printf("📊 Processamento de matriz: %d linhas processadas\n", rows);
     printf("   Pico canal esquerdo: %d\n", max_left);
     printf("   Pico canal direito: %d\n", max_right);
     

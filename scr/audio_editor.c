@@ -16,28 +16,26 @@ static AudioEditor *g_editor = NULL;
 #ifdef USE_SDL2
 static void audio_callback(void *userdata, Uint8 *stream, int len) {
     AudioEditor *editor = (AudioEditor *)userdata;
+    
     if (!editor || !editor->audio_playing || !editor->audio_buffer) {
         memset(stream, 0, len);
         return;
     }
     
-    int16_t *output = (int16_t *)stream;
-    int samples_requested = len / sizeof(int16_t);
-    int samples_available = (editor->audio_buffer_size - editor->audio_buffer_pos) / sizeof(int16_t);
-    int samples_to_copy = (samples_available < samples_requested) ? samples_available : samples_requested;
+    int bytes_available = editor->audio_buffer_size - editor->audio_buffer_pos;
+    int bytes_to_copy = (bytes_available < len) ? bytes_available : len;
     
-    if (samples_to_copy > 0) {
-        memcpy(output, editor->audio_buffer + editor->audio_buffer_pos / sizeof(int16_t), 
-               samples_to_copy * sizeof(int16_t));
-        editor->audio_buffer_pos += samples_to_copy * sizeof(int16_t);
+    if (bytes_to_copy > 0) {
+        memcpy(stream, (Uint8 *)editor->audio_buffer + editor->audio_buffer_pos, bytes_to_copy);
+        editor->audio_buffer_pos += bytes_to_copy;
         
         if (editor->audio_buffer_size > 0) {
             editor->current_position = (editor->audio_buffer_pos * 1000000) / editor->audio_buffer_size;
         }
     }
     
-    if (samples_to_copy < samples_requested) {
-        memset(output + samples_to_copy, 0, (samples_requested - samples_to_copy) * sizeof(int16_t));
+    if (bytes_to_copy < len) {
+        memset(stream + bytes_to_copy, 0, len - bytes_to_copy);
         editor->audio_playing = 0;
         editor->playing = 0;
         editor->current_position = 0;
@@ -106,12 +104,10 @@ static int load_audio_for_playback(AudioEditor *editor) {
     }
     
     editor->audio_spec = wav_spec;
+    editor->audio_spec.format = AUDIO_S16SYS;
     editor->audio_buffer = (int16_t *)wav_buffer;
     editor->audio_buffer_size = wav_length;
     editor->audio_buffer_pos = 0;
-    
-    printf("✅ Áudio carregado: %u bytes, %d Hz, %d canais\n", 
-           wav_length, wav_spec.freq, wav_spec.channels);
     #else
     FILE *f = fopen(temp_file, "rb");
     if (f) {
@@ -279,6 +275,14 @@ static void on_play(GtkButton *button, gpointer user_data) {
     }
     
     if (!editor->audio_buffer || editor->audio_buffer_pos >= editor->audio_buffer_size) {
+        #ifdef USE_SDL2
+        if (editor->audio_device != 0) {
+            SDL_PauseAudioDevice(editor->audio_device, 1);
+            SDL_CloseAudioDevice(editor->audio_device);
+            editor->audio_device = 0;
+        }
+        #endif
+        
         if (load_audio_for_playback(editor) != 0) {
             return;
         }
@@ -295,17 +299,20 @@ static void on_play(GtkButton *button, gpointer user_data) {
     
     #ifdef USE_SDL2
     SDL_AudioSpec desired_spec = editor->audio_spec;
+    SDL_AudioSpec obtained_spec;
     desired_spec.callback = audio_callback;
     desired_spec.userdata = editor;
+    desired_spec.format = AUDIO_S16SYS;
     
     if (editor->audio_device == 0) {
-        editor->audio_device = SDL_OpenAudioDevice(NULL, 0, &desired_spec, NULL, 0);
+        editor->audio_device = SDL_OpenAudioDevice(NULL, 0, &desired_spec, &obtained_spec, 0);
         if (editor->audio_device == 0) {
             printf("❌ Erro ao abrir dispositivo de áudio: %s\n", SDL_GetError());
             editor->playing = 0;
             editor->audio_playing = 0;
             return;
         }
+        editor->audio_spec = obtained_spec;
     }
     
     SDL_PauseAudioDevice(editor->audio_device, 0);
@@ -396,7 +403,6 @@ static void on_export(GtkButton *button, gpointer user_data) {
             input_files[i] = clip->filename;
             volumes[i] = clip->volume;
             pans[i] = clip->pan;
-            printf("📁 %s (volume: %.1f, pan: %.1f)\n", input_files[i], volumes[i], pans[i]);
             i++;
             iter = g_list_next(iter);
         }
